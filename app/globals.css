@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+/* ===========================================================
+   D'look y Estilos — Sistema visual
+   Paleta: Turquesa · Crema · Dorado (sin navy)
+   =========================================================== */
+
+:root {
+  /* TURQUESAS */
+  --turquesa: #1A9B9B;
+  --turquesa-dark: #0E5F5F;
+  --turquesa-deep: #073D3D;
+  --turquesa-mid: #4DB8B8;
+  --turquesa-soft: #B8DEDE;
+  --turquesa-mist: #E8F4F4;
+
+  /* DORADOS */
+  --gold: #C5973A;
+  --gold-dark: #8E6A22;
+  --gold-light: #E0B968;
+  --gold-soft: #F0D89A;
+  --gold-mist: #FAF1DC;
+
+  /* CREMAS */
+  --crema: #F8F3EC;
+  --crema-warm: #F2EADD;
+  --crema-deep: #E8DDC8;
+
+  /* ROSA acento */
+  --rosa: #D4A5A5;
+  --rosa-soft: #ECD5D5;
+
+  /* INK basado en turquesa */
+  --ink: #2C4A4A;
+  --ink-soft: #5C7878;
+  --ink-mute: #8FA5A5;
+  --line: #E0D9C9;
+  --line-soft: #EDE5D6;
+  --white: #FFFFFF;
+
+  /* Background app */
+  --background: var(--crema);
+  --foreground: var(--ink);
+}
+
+@theme inline {
+  /* Colores expuestos a Tailwind */
+  --color-turquesa: var(--turquesa);
+  --color-turquesa-dark: var(--turquesa-dark);
+  --color-turquesa-deep: var(--turquesa-deep);
+  --color-turquesa-mid: var(--turquesa-mid);
+  --color-turquesa-soft: var(--turquesa-soft);
+  --color-turquesa-mist: var(--turquesa-mist);
+
+  --color-gold: var(--gold);
+  --color-gold-dark: var(--gold-dark);
+  --color-gold-light: var(--gold-light);
+  --color-gold-soft: var(--gold-soft);
+  --color-gold-mist: var(--gold-mist);
+
+  --color-crema: var(--crema);
+  --color-crema-warm: var(--crema-warm);
+  --color-crema-deep: var(--crema-deep);
+
+  --color-rosa: var(--rosa);
+  --color-rosa-soft: var(--rosa-soft);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-mute: var(--ink-mute);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Fuentes */
+  --font-cormorant: var(--font-cormorant);
+  --font-jost: var(--font-jost);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-jost), sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-cormorant), serif;
+  font-weight: 400;
+  color: var(--turquesa-dark);
+  letter-spacing: 0.005em;
+}
+
+h1 { font-weight: 300; }
