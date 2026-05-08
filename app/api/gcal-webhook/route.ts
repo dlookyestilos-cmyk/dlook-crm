@@ -68,14 +68,25 @@ export async function POST(req: NextRequest) {
         .limit(1)
         .single();
 
-      if (!clienteRow) continue;
+      let clienteFinalId: string;
+      if (clienteRow) {
+        clienteFinalId = clienteRow.id;
+      } else {
+        const { data: nuevaClienta } = await supabase
+          .from("clientes")
+          .insert({ nombre_completo: clienteNombre, pendiente_datos: true })
+          .select("id")
+          .single();
+        if (!nuevaClienta) continue;
+        clienteFinalId = nuevaClienta.id;
+      }
 
       const durMin = ev.end?.dateTime
         ? Math.round((new Date(ev.end.dateTime).getTime() - new Date(ev.start.dateTime).getTime()) / 60_000)
         : 60;
 
       await supabase.from("citas_agendadas").insert({
-        cliente_id:               clienteRow.id,
+        cliente_id:               clienteFinalId,
         asignada_a:               canal.profile_id,
         fecha_hora:               ev.start.dateTime,
         duracion_minutos:         durMin,

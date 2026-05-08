@@ -2,7 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, X, Clock, Pencil, Trash2, RefreshCw } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, Plus, X, Clock, Pencil, Trash2,
+  RefreshCw, AlertTriangle, Calendar, User, FileText,
+} from "lucide-react";
 import type { Cita, AgendaServicio, AgendaCliente, AgendaPerfil } from "../page";
 import NuevaCitaDrawer from "./nueva-cita-drawer";
 import { eliminarCita, sincronizarDesdeGcal } from "../actions";
@@ -26,6 +29,16 @@ function formatHoraCita(fechaHora: string): string {
   const b  = new Date(ms);
   const h  = b.getUTCHours(), m = b.getUTCMinutes();
   return `${String(h % 12 || 12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+}
+
+function formatFechaCompleta(fechaHora: string): string {
+  const ms = new Date(fechaHora).getTime() - 5 * 60 * 60 * 1000;
+  const b  = new Date(ms);
+  const d  = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()));
+  const raw = new Intl.DateTimeFormat("es-CO", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  }).format(d);
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
 function mesLabel(year: number, month: number): string {
@@ -143,12 +156,12 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
   const [selectedDay, setSelectedDay]   = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen]     = useState(false);
   const [editCita, setEditCita]         = useState<Cita | null>(null);
+  const [detailCita, setDetailCita]     = useState<Cita | null>(null);
   const [defaultFecha, setDefaultFecha] = useState(isoDate(new Date()));
   const [filtroEst, setFiltroEst]       = useState<string>("all");
   const [syncMsg, setSyncMsg]           = useState<string | null>(null);
   const [deleteError, setDeleteError]   = useState<string | null>(null);
 
-  // Filtro de esteticista (solo admin)
   const citasFiltradas = useMemo(() =>
     esAdmin && filtroEst !== "all"
       ? citas.filter((c) => c.asignada_a === filtroEst)
@@ -168,6 +181,19 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
 
   const calendarDays = useMemo(() => buildCalendarDays(year, month), [year, month]);
   const selectedDayCitas = selectedDay ? (citasByDate.get(selectedDay) ?? []) : [];
+
+  // Clientas únicas con datos pendientes en este mes
+  const clientesPendientes = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { id: string; nombre: string }[] = [];
+    for (const c of citas) {
+      if (c.cliente_pendiente_datos && !seen.has(c.cliente_id)) {
+        seen.add(c.cliente_id);
+        result.push({ id: c.cliente_id, nombre: c.cliente_nombre });
+      }
+    }
+    return result;
+  }, [citas]);
 
   function openNueva(fecha: string) {
     setEditCita(null);
@@ -208,7 +234,6 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
     <>
       {/* ── Toolbar ── */}
       <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
-        {/* Navegación de mes */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push(`/agenda?mes=${prevMesParam(year, month)}`)}
@@ -227,7 +252,6 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
           </button>
         </div>
 
-        {/* Acciones */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={handleSync}
@@ -285,6 +309,25 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
         </div>
       )}
 
+      {/* ── Alerta clientas con datos pendientes ── */}
+      {clientesPendientes.length > 0 && (
+        <div className="mb-5 bg-[#FFF8ED] border border-gold/40 rounded-xl px-5 py-4 flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-gold-dark shrink-0 mt-0.5" strokeWidth={1.8} />
+          <div>
+            <p className="text-[13px] font-medium text-gold-dark mb-1">
+              {clientesPendientes.length === 1
+                ? "1 clienta nueva con datos incompletos"
+                : `${clientesPendientes.length} clientas nuevas con datos incompletos`}
+            </p>
+            <p className="text-[12px] text-[#8A6420]">
+              {clientesPendientes.map((c) => c.nombre).join(", ")} —{" "}
+              importada{clientesPendientes.length !== 1 ? "s" : ""} desde Google Calendar.
+              Haz clic en la cita para ver los detalles y completar su perfil.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Mensajes ── */}
       {syncMsg && (
         <div className={`mb-4 text-[13px] px-4 py-3 rounded-md border-l-2 ${
@@ -303,7 +346,6 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
 
       {/* ── Calendario ── */}
       <div className="bg-white rounded-2xl border border-line-soft overflow-hidden shadow-sm mb-6">
-        {/* Encabezados de días */}
         <div className="grid grid-cols-7 border-b border-line-soft">
           {["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"].map((d) => (
             <div key={d} className="py-3 text-center text-[10px] font-medium tracking-[2px] uppercase text-gold">
@@ -312,10 +354,9 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
           ))}
         </div>
 
-        {/* Celdas */}
         <div className="grid grid-cols-7">
           {calendarDays.map((day, i) => {
-            const dayCitas  = citasByDate.get(day.dateKey) ?? [];
+            const dayCitas   = citasByDate.get(day.dateKey) ?? [];
             const isSelected = selectedDay === day.dateKey;
             return (
               <DayCell
@@ -373,6 +414,7 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
                   esAdmin={esAdmin}
                   onEdit={() => openEditar(cita)}
                   onDelete={() => handleEliminar(cita.id)}
+                  onDetail={() => setDetailCita(cita)}
                   isPending={isPending}
                 />
               ))}
@@ -381,7 +423,7 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
         </div>
       )}
 
-      {/* ── Drawer ── */}
+      {/* ── Drawer nueva/editar cita ── */}
       <NuevaCitaDrawer
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setEditCita(null); }}
@@ -393,6 +435,18 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
         esAdmin={esAdmin}
         userId={userId}
       />
+
+      {/* ── Modal detalle de cita ── */}
+      {detailCita && (
+        <CitaDetailModal
+          cita={detailCita}
+          esAdmin={esAdmin}
+          onClose={() => setDetailCita(null)}
+          onEdit={() => { setDetailCita(null); openEditar(detailCita); }}
+          onDelete={() => { setDetailCita(null); handleEliminar(detailCita.id); }}
+          isPending={isPending}
+        />
+      )}
     </>
   );
 }
@@ -404,8 +458,9 @@ export default function AgendaCalendar({ citas, servicios, clientas, perfiles, y
 function DayCell({ day, citas, isSelected, onClick }: {
   day: CalDay; citas: Cita[]; isSelected: boolean; onClick: () => void;
 }) {
-  const visible  = citas.slice(0, 2);
-  const overflow = citas.length - 2;
+  const visible    = citas.slice(0, 2);
+  const overflow   = citas.length - 2;
+  const hasPending = citas.some((c) => c.cliente_pendiente_datos);
 
   return (
     <div
@@ -415,12 +470,15 @@ function DayCell({ day, citas, isSelected, onClick }: {
         ${isSelected ? "bg-turquesa-mist/20 ring-1 ring-inset ring-turquesa/30" : "hover:bg-crema/60"}
       `}
     >
-      <div className="mb-1.5">
+      <div className="mb-1.5 flex items-center gap-1">
         <span className={`inline-flex w-7 h-7 items-center justify-center rounded-full text-[13px] font-medium ${
           day.isToday ? "bg-turquesa text-white" : isSelected ? "bg-gold text-white" : "text-ink-soft"
         }`}>
           {day.date.getDate()}
         </span>
+        {hasPending && (
+          <span className="w-1.5 h-1.5 rounded-full bg-gold shrink-0" title="Clienta con datos pendientes" />
+        )}
       </div>
       <div className="space-y-0.5">
         {visible.map((cita) => (
@@ -447,18 +505,33 @@ function DayCell({ day, citas, isSelected, onClick }: {
    Cita row (panel de día)
    ============================ */
 
-function CitaRow({ cita, esAdmin, onEdit, onDelete, isPending }: {
-  cita: Cita; esAdmin: boolean; onEdit: () => void; onDelete: () => void; isPending: boolean;
+function CitaRow({ cita, esAdmin, onEdit, onDelete, onDetail, isPending }: {
+  cita: Cita;
+  esAdmin: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDetail: () => void;
+  isPending: boolean;
 }) {
   return (
-    <div className="flex items-center gap-4 px-6 py-4 hover:bg-crema/30 transition">
+    <div
+      onClick={onDetail}
+      className="flex items-center gap-4 px-6 py-4 hover:bg-crema/30 transition cursor-pointer"
+    >
       <div className="flex items-center gap-1.5 text-[13px] font-medium text-turquesa-dark min-w-[80px] shrink-0">
         <Clock className="w-3.5 h-3.5 text-turquesa-dark/60" strokeWidth={1.8} />
         {formatHoraCita(cita.fecha_hora)}
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="font-medium text-[14px] text-turquesa-dark truncate">{cita.cliente_nombre}</div>
+        <div className="font-medium text-[14px] text-turquesa-dark truncate flex items-center gap-2">
+          {cita.cliente_nombre}
+          {cita.cliente_pendiente_datos && (
+            <span className="text-[9px] font-semibold uppercase tracking-wide bg-gold-mist text-gold-dark px-2 py-0.5 rounded-full shrink-0">
+              Datos pendientes
+            </span>
+          )}
+        </div>
         <div className="text-[12px] text-ink-soft font-light flex items-center gap-2 flex-wrap">
           {cita.servicio_nombre && <span>{cita.servicio_nombre}</span>}
           {cita.servicio_nombre && <span>·</span>}
@@ -479,15 +552,162 @@ function CitaRow({ cita, esAdmin, onEdit, onDelete, isPending }: {
         {ESTADO_LABEL[cita.estado]}
       </span>
 
-      <div className="flex items-center gap-1 shrink-0">
-        <button onClick={onEdit} title="Editar"
-          className="w-8 h-8 rounded-lg border border-line text-ink-soft flex items-center justify-center hover:border-turquesa hover:text-turquesa hover:bg-turquesa-mist transition">
+      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onEdit}
+          title="Editar"
+          className="w-8 h-8 rounded-lg border border-line text-ink-soft flex items-center justify-center hover:border-turquesa hover:text-turquesa hover:bg-turquesa-mist transition"
+        >
           <Pencil className="w-3.5 h-3.5" strokeWidth={1.8} />
         </button>
-        <button onClick={onDelete} disabled={isPending} title="Eliminar"
-          className="w-8 h-8 rounded-lg border border-line text-ink-soft flex items-center justify-center hover:border-rosa hover:text-rosa hover:bg-rosa-soft/40 transition disabled:opacity-50">
+        <button
+          onClick={onDelete}
+          disabled={isPending}
+          title="Eliminar"
+          className="w-8 h-8 rounded-lg border border-line text-ink-soft flex items-center justify-center hover:border-rosa hover:text-rosa hover:bg-rosa-soft/40 transition disabled:opacity-50"
+        >
           <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================
+   Modal detalle de cita
+   ============================ */
+
+function CitaDetailModal({ cita, esAdmin, onClose, onEdit, onDelete, isPending }: {
+  cita: Cita;
+  esAdmin: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Card */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+        {/* Header */}
+        <div className="bg-crema px-6 py-5 border-b border-line-soft">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <span className={`text-[10px] font-semibold uppercase tracking-[1.5px] px-3 py-1 rounded-full ${ESTADO_CHIP[cita.estado]}`}>
+                {ESTADO_LABEL[cita.estado]}
+              </span>
+              <h2 className="font-cormorant text-[28px] font-light text-turquesa-dark mt-2 leading-tight truncate">
+                {cita.cliente_nombre}
+              </h2>
+              {cita.cliente_pendiente_datos && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-gold-dark shrink-0" strokeWidth={1.8} />
+                  <span className="text-[11px] text-gold-dark font-medium">Nueva clienta — datos incompletos</span>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg border border-line text-ink-mute flex items-center justify-center hover:border-turquesa hover:text-turquesa-dark transition shrink-0 mt-1"
+            >
+              <X className="w-3.5 h-3.5" strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+
+          {/* Fecha y hora */}
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-turquesa-mist flex items-center justify-center shrink-0">
+              <Calendar className="w-4 h-4 text-turquesa-dark" strokeWidth={1.6} />
+            </div>
+            <div>
+              <div className="text-[13px] font-medium text-ink capitalize">
+                {formatFechaCompleta(cita.fecha_hora)}
+              </div>
+              <div className="text-[12px] text-ink-soft">
+                {formatHoraCita(cita.fecha_hora)} · {cita.duracion_minutos} min
+              </div>
+            </div>
+          </div>
+
+          {/* Servicio */}
+          {cita.servicio_nombre && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-turquesa-mist flex items-center justify-center shrink-0">
+                <span className={`w-3 h-3 rounded-full ${CATEGORIA_DOT[cita.servicio_categoria ?? ""] ?? "bg-ink-mute"}`} />
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[1.5px] text-ink-mute font-medium mb-0.5">Servicio</div>
+                <div className="text-[13px] font-medium text-ink">{cita.servicio_nombre}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Asignada a (solo admin) */}
+          {esAdmin && cita.asignada_nombre && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-turquesa-mist flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-turquesa-dark" strokeWidth={1.6} />
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[1.5px] text-ink-mute font-medium mb-0.5">Asignada a</div>
+                <div className="text-[13px] font-medium text-ink">{cita.asignada_nombre}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Notas */}
+          {cita.notas && (
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-turquesa-mist flex items-center justify-center shrink-0 mt-0.5">
+                <FileText className="w-4 h-4 text-turquesa-dark" strokeWidth={1.6} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] uppercase tracking-[1.5px] text-ink-mute font-medium mb-1">Notas</div>
+                <div className="text-[13px] text-ink whitespace-pre-wrap leading-relaxed">{cita.notas}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Aviso datos pendientes */}
+          {cita.cliente_pendiente_datos && (
+            <div className="bg-[#FFF8ED] border border-gold/40 rounded-xl px-4 py-3">
+              <p className="text-[12px] text-[#8A6420] leading-relaxed">
+                Esta clienta fue creada automáticamente al importar la cita desde Google Calendar.
+                Sus datos (teléfono, documento, etc.) están pendientes de completar.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-line-soft bg-crema/50 flex items-center justify-between gap-3">
+          <button
+            onClick={onDelete}
+            disabled={isPending}
+            className="flex items-center gap-1.5 text-[12px] text-ink-mute hover:text-rosa transition disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />
+            Eliminar cita
+          </button>
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-2 bg-turquesa text-white px-5 py-2.5 rounded-xl text-[13px] font-medium hover:bg-turquesa-dark transition shadow-[0_4px_12px_rgba(26,155,155,0.25)]"
+          >
+            <Pencil className="w-3.5 h-3.5" strokeWidth={2} />
+            Editar cita
+          </button>
+        </div>
       </div>
     </div>
   );

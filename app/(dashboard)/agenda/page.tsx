@@ -5,6 +5,7 @@ export type Cita = {
   id: string;
   cliente_id: string;
   cliente_nombre: string;
+  cliente_pendiente_datos: boolean;
   servicio_id: string | null;
   servicio_nombre: string | null;
   servicio_categoria: string | null;
@@ -77,7 +78,7 @@ export default async function AgendaPage({
       duracion_minutos,
       estado,
       notas,
-      cliente:cliente_id ( nombre_completo ),
+      cliente:cliente_id ( nombre_completo, pendiente_datos ),
       servicio:servicio_id ( nombre, categoria ),
       asignado:asignada_a ( nombre )
     `)
@@ -97,10 +98,11 @@ export default async function AgendaPage({
     const servicio = Array.isArray(row.servicio)  ? row.servicio[0]  : row.servicio;
     const asignado = Array.isArray(row.asignado)  ? row.asignado[0]  : row.asignado;
     return {
-      id:                  row.id,
-      cliente_id:          row.cliente_id,
-      cliente_nombre:      cliente?.nombre_completo ?? "—",
-      servicio_id:         row.servicio_id,
+      id:                      row.id,
+      cliente_id:              row.cliente_id,
+      cliente_nombre:          cliente?.nombre_completo ?? "—",
+      cliente_pendiente_datos: (cliente as any)?.pendiente_datos ?? false,
+      servicio_id:             row.servicio_id,
       servicio_nombre:     servicio?.nombre ?? null,
       servicio_categoria:  servicio?.categoria ?? null,
       asignada_a:          row.asignada_a,
