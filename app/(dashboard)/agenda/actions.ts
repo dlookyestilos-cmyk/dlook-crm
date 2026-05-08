@@ -65,16 +65,32 @@ export async function crearCita(formData: FormData): Promise<ActionResult> {
   const { data: { user } } = await supabase.auth.getUser();
   const { data: perfil }   = await supabase.from("profiles").select("rol, google_calendar_id").eq("id", user!.id).single();
 
-  const fecha       = (formData.get("fecha")      as string)?.trim();
-  const hora        = (formData.get("hora")       as string)?.trim();
-  const clienteId   = (formData.get("cliente_id") as string)?.trim();
-  const servicioId  = (formData.get("servicio_id") as string)?.trim() || null;
-  const asignadaA   = (formData.get("asignada_a") as string)?.trim() || null;
-  const duracion    = parseInt(formData.get("duracion_minutos") as string) || 60;
-  const notas       = (formData.get("notas") as string)?.trim() || null;
+  const fecha              = (formData.get("fecha")               as string)?.trim();
+  const hora               = (formData.get("hora")                as string)?.trim();
+  const clienteIdRaw       = (formData.get("cliente_id")          as string)?.trim();
+  const nuevaClientaNombre = (formData.get("nueva_clienta_nombre") as string)?.trim() || null;
+  const servicioId         = (formData.get("servicio_id")         as string)?.trim() || null;
+  const asignadaA          = (formData.get("asignada_a")          as string)?.trim() || null;
+  const duracion           = parseInt(formData.get("duracion_minutos") as string) || 60;
+  const notas              = (formData.get("notas")               as string)?.trim() || null;
 
-  if (!fecha || !hora || !clienteId) {
-    return { ok: false, error: "Fecha, hora y clienta son requeridos." };
+  if (!fecha || !hora) {
+    return { ok: false, error: "Fecha y hora son requeridas." };
+  }
+  if (!clienteIdRaw && !nuevaClientaNombre) {
+    return { ok: false, error: "La clienta es requerida." };
+  }
+
+  // Crear clienta nueva si no existe aún
+  let clienteId = clienteIdRaw;
+  if (!clienteId && nuevaClientaNombre) {
+    const { data: nuevaClienta } = await supabase
+      .from("clientes")
+      .insert({ nombre_completo: nuevaClientaNombre, pendiente_datos: true })
+      .select("id")
+      .single();
+    if (!nuevaClienta) return { ok: false, error: "No se pudo crear la clienta." };
+    clienteId = nuevaClienta.id;
   }
 
   const fechaHora = `${fecha}T${hora}:00-05:00`;

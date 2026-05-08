@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Search } from "lucide-react";
+import { Check, Search, UserPlus } from "lucide-react";
 import Drawer, { DrawerCloseButton } from "@/app/_components/drawer";
 import { crearCita, actualizarCita } from "../actions";
 import type { Cita, AgendaServicio, AgendaCliente, AgendaPerfil } from "../page";
@@ -49,7 +49,8 @@ export default function NuevaCitaDrawer({
 
   const isEdit = editCita !== null;
 
-  const [selectedCliente, setSelectedCliente] = useState<AgendaCliente | null>(null);
+  const [selectedCliente,    setSelectedCliente]    = useState<AgendaCliente | null>(null);
+  const [nuevaClientaNombre, setNuevaClientaNombre] = useState<string | null>(null);
   const [fecha,      setFecha]     = useState("");
   const [hora,       setHora]      = useState("09:00");
   const [duracion,   setDuracion]  = useState("60");
@@ -62,6 +63,7 @@ export default function NuevaCitaDrawer({
     if (!open) return;
     setError(null);
     setSavedAt(null);
+    setNuevaClientaNombre(null);
     if (isEdit && editCita) {
       setFecha(bogotaDate(editCita.fecha_hora));
       setHora(bogotaHora(editCita.fecha_hora));
@@ -76,21 +78,39 @@ export default function NuevaCitaDrawer({
       setHora("09:00");
       setDuracion("60");
       setServicio("");
-      setAsignadaA(esAdmin ? "" : userId); // esteticista se auto-asigna
+      setAsignadaA(esAdmin ? "" : userId);
       setEstado("agendada");
       setNotas("");
       setSelectedCliente(null);
     }
   }, [open, isEdit, editCita?.id, defaultFecha]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function handleSelectCliente(c: AgendaCliente) {
+    setSelectedCliente(c);
+    setNuevaClientaNombre(null);
+  }
+
+  function handleCreateNueva(nombre: string) {
+    setSelectedCliente(null);
+    setNuevaClientaNombre(nombre);
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!selectedCliente) { setError("Selecciona una clienta."); return; }
-    if (!fecha || !hora)   { setError("Fecha y hora son requeridas."); return; }
+    if (!selectedCliente && !nuevaClientaNombre) {
+      setError("Selecciona una clienta o escribe su nombre para crearla.");
+      return;
+    }
+    if (!fecha || !hora) { setError("Fecha y hora son requeridas."); return; }
     setError(null);
 
     const fd = new FormData();
-    fd.set("cliente_id",       selectedCliente.id);
+    if (selectedCliente) {
+      fd.set("cliente_id", selectedCliente.id);
+    } else {
+      fd.set("cliente_id", "");
+      fd.set("nueva_clienta_nombre", nuevaClientaNombre!);
+    }
     fd.set("fecha",            fecha);
     fd.set("hora",             hora);
     fd.set("servicio_id",      servicio);
@@ -127,14 +147,19 @@ export default function NuevaCitaDrawer({
       </header>
 
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden min-h-0">
-        {/* Campos */}
         <div className="flex-1 overflow-y-auto px-9 py-8 min-h-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
             {/* Clienta */}
             <div className="md:col-span-2">
               <Label>Clienta *</Label>
-              <ClienteSelector clientas={clientas} value={selectedCliente} onChange={setSelectedCliente} />
+              <ClienteSelector
+                clientas={clientas}
+                value={selectedCliente}
+                nuevaNombre={nuevaClientaNombre}
+                onChange={handleSelectCliente}
+                onCreateNew={handleCreateNueva}
+              />
             </div>
 
             {/* Fecha */}
@@ -245,17 +270,23 @@ export default function NuevaCitaDrawer({
    ============================ */
 
 function ClienteSelector({
-  clientas, value, onChange,
+  clientas, value, nuevaNombre, onChange, onCreateNew,
 }: {
   clientas: AgendaCliente[];
   value: AgendaCliente | null;
+  nuevaNombre: string | null;
   onChange: (c: AgendaCliente) => void;
+  onCreateNew: (nombre: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [open,   setOpen]   = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setSearch(value?.nombre_completo ?? ""); }, [value]);
+  useEffect(() => {
+    if (value)        setSearch(value.nombre_completo);
+    else if (nuevaNombre) setSearch(nuevaNombre);
+    else              setSearch("");
+  }, [value, nuevaNombre]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -273,20 +304,36 @@ function ClienteSelector({
     ).slice(0, 8);
   }, [clientas, search]);
 
+  const showCreateOption = search.trim().length > 1 && !filtered.some(
+    (c) => c.nombre_completo.toLowerCase() === search.trim().toLowerCase()
+  );
+
   return (
     <div ref={ref} className="relative">
-      <div className="flex items-center gap-2.5 bg-white border border-line-soft px-4 py-3 rounded-xl focus-within:border-turquesa focus-within:shadow-[0_0_0_3px_var(--turquesa-mist)] transition">
+      <div className={`flex items-center gap-2.5 bg-white border px-4 py-3 rounded-xl transition focus-within:shadow-[0_0_0_3px_var(--turquesa-mist)] ${
+        nuevaNombre ? "border-gold focus-within:border-gold" : "border-line-soft focus-within:border-turquesa"
+      }`}>
         <Search className="w-4 h-4 text-ink-mute shrink-0" strokeWidth={1.5} />
         <input
           type="text"
           value={search}
           onFocus={() => setOpen(true)}
           onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
-          placeholder="Buscar clienta por nombre o documento…"
+          placeholder="Buscar clienta o escribir nombre para crear nueva…"
           className="bg-transparent outline-none flex-1 text-[14px] font-light text-ink"
         />
       </div>
-      {open && filtered.length > 0 && (
+
+      {/* Indicador de nueva clienta */}
+      {nuevaNombre && (
+        <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gold-dark">
+          <UserPlus className="w-3 h-3 shrink-0" strokeWidth={1.8} />
+          Se creará nueva clienta: <span className="font-medium">{nuevaNombre}</span>
+        </div>
+      )}
+
+      {/* Dropdown */}
+      {open && (filtered.length > 0 || showCreateOption) && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-line-soft rounded-xl shadow-lg overflow-hidden">
           {filtered.map((c) => (
             <button key={c.id} type="button"
@@ -297,6 +344,20 @@ function ClienteSelector({
               {c.documento && <div className="text-[11px] text-ink-mute">{c.documento}</div>}
             </button>
           ))}
+          {showCreateOption && (
+            <button type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onCreateNew(search.trim()); setOpen(false); }}
+              className="w-full text-left px-4 py-3 hover:bg-[#FFF8ED] transition border-t border-line-soft flex items-center gap-3">
+              <div className="w-7 h-7 rounded-full bg-gold-mist flex items-center justify-center shrink-0">
+                <UserPlus className="w-3.5 h-3.5 text-gold-dark" strokeWidth={1.8} />
+              </div>
+              <div>
+                <div className="text-[13px] font-medium text-gold-dark">Crear nueva clienta</div>
+                <div className="text-[11px] text-ink-mute">"{search.trim()}" — podrás completar sus datos después</div>
+              </div>
+            </button>
+          )}
         </div>
       )}
     </div>
