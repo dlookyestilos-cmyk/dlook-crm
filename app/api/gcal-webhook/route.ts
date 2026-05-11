@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
         clienteFinalId = nuevaClienta.id;
       }
 
-      const durMin = ev.end?.dateTime
+      const durMin = ev.end?.dateTime && ev.start?.dateTime
         ? Math.round((new Date(ev.end.dateTime).getTime() - new Date(ev.start.dateTime).getTime()) / 60_000)
         : 60;
 
