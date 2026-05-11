@@ -6,15 +6,17 @@ import { Search, Loader2 } from "lucide-react";
 import { buscarClientas, type SearchResult } from "../_actions/buscar-clientas";
 
 const ESTADO_LABEL: Record<SearchResult["estado"], string> = {
-  activo: "Activa",
-  pausado: "Pausada",
-  completado: "Completa",
+  activo:          "Activa",
+  pausado:         "Pausada",
+  completado:      "Completa",
+  sin_tratamiento: "Sin tratamiento",
 };
 
 const ESTADO_CHIP: Record<SearchResult["estado"], string> = {
-  activo: "bg-turquesa-mist text-turquesa-dark",
-  pausado: "bg-gold-mist text-gold-dark",
-  completado: "bg-rosa-soft text-[#B07878]",
+  activo:          "bg-turquesa-mist text-turquesa-dark",
+  pausado:         "bg-gold-mist text-gold-dark",
+  completado:      "bg-rosa-soft text-[#B07878]",
+  sin_tratamiento: "bg-crema-deep text-ink-soft",
 };
 
 function getIniciales(nombre: string): string {
@@ -37,7 +39,6 @@ export default function TopbarSearch() {
   const [highlightedIdx, setHighlightedIdx] = useState(0);
   const [isSearching, startSearch] = useTransition();
 
-  // Debounce + dispatch
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
@@ -56,19 +57,15 @@ export default function TopbarSearch() {
     return () => clearTimeout(t);
   }, [query]);
 
-  // Cerrar al click fuera
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!containerRef.current) return;
-      if (!containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (!containerRef.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  // Atajo Cmd/Ctrl + K para enfocar
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -84,7 +81,11 @@ export default function TopbarSearch() {
     setOpen(false);
     setQuery("");
     setResults([]);
-    router.push(`/servicios/${r.servicio_id}?cliente=${r.cs_id}`);
+    if (r.cs_id && r.servicio_id) {
+      router.push(`/servicios/${r.servicio_id}?cliente=${r.cs_id}`);
+    } else {
+      router.push(`/clientas?id=${r.cliente_id}`);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -146,12 +147,10 @@ export default function TopbarSearch() {
                   const highlighted = idx === highlightedIdx;
                   const pct =
                     r.sesiones_totales > 0
-                      ? Math.round(
-                          (r.sesiones_completadas / r.sesiones_totales) * 100
-                        )
+                      ? Math.round((r.sesiones_completadas / r.sesiones_totales) * 100)
                       : 0;
                   return (
-                    <li key={r.cs_id}>
+                    <li key={r.cs_id ?? r.cliente_id}>
                       <button
                         onMouseEnter={() => setHighlightedIdx(idx)}
                         onClick={() => selectResult(r)}
@@ -168,26 +167,38 @@ export default function TopbarSearch() {
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[11px] text-ink-mute truncate">
-                              {r.servicio_nombre}
+                              {r.servicio_nombre ?? "Sin tratamiento activo"}
                             </span>
-                            <span className="text-line">·</span>
-                            <span className="text-[11px] text-ink-soft font-cormorant">
-                              {r.sesiones_completadas}/{r.sesiones_totales}
-                            </span>
+                            {r.sesiones_totales > 0 && (
+                              <>
+                                <span className="text-line">·</span>
+                                <span className="text-[11px] text-ink-soft font-cormorant">
+                                  {r.sesiones_completadas}/{r.sesiones_totales}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          <span
-                            className={`text-[9.5px] font-medium uppercase tracking-[1.5px] px-2 py-0.5 rounded-full ${ESTADO_CHIP[r.estado]}`}
-                          >
-                            {ESTADO_LABEL[r.estado]}
-                          </span>
-                          <div className="w-16 h-1 bg-crema-deep rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-turquesa to-gold rounded-full"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
+                          {r.pendiente_datos ? (
+                            <span className="text-[9.5px] font-medium uppercase tracking-[1.5px] px-2 py-0.5 rounded-full bg-gold-mist text-gold-dark">
+                              Pendiente
+                            </span>
+                          ) : (
+                            <span
+                              className={`text-[9.5px] font-medium uppercase tracking-[1.5px] px-2 py-0.5 rounded-full ${ESTADO_CHIP[r.estado]}`}
+                            >
+                              {ESTADO_LABEL[r.estado]}
+                            </span>
+                          )}
+                          {r.sesiones_totales > 0 && (
+                            <div className="w-16 h-1 bg-crema-deep rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-turquesa to-gold rounded-full"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
                       </button>
                     </li>

@@ -63,27 +63,15 @@ export async function POST(req: NextRequest) {
           notas:      ev.description ?? null,
         };
 
-        // Si el título cambió, intentar actualizar el cliente
+        // Si el título cambió, actualizar el nombre directamente en la clienta existente
+        // (es un rename, no un cambio de clienta — no buscar ni crear una nueva)
         const match = (ev.summary ?? "").match(/D'look\s*[—-]\s*([^·\n]+)/);
         const nuevoNombre = match?.[1]?.trim();
-        if (nuevoNombre) {
-          const { data: clienteRow } = await supabase
+        if (nuevoNombre && citaExistente.cliente_id) {
+          await supabase
             .from("clientes")
-            .select("id")
-            .ilike("nombre_completo", `%${nuevoNombre}%`)
-            .limit(1)
-            .single();
-          if (clienteRow && clienteRow.id !== (citaExistente as any).cliente_id) {
-            updates.cliente_id = clienteRow.id;
-          } else if (!clienteRow) {
-            // Cliente no existe → crear con datos pendientes y actualizar la cita
-            const { data: nueva } = await supabase
-              .from("clientes")
-              .insert({ nombre_completo: nuevoNombre, pendiente_datos: true })
-              .select("id")
-              .single();
-            if (nueva) updates.cliente_id = nueva.id;
-          }
+            .update({ nombre_completo: nuevoNombre })
+            .eq("id", citaExistente.cliente_id);
         }
 
         await supabase.from("citas_agendadas").update(updates).eq("id", citaExistente.id);
@@ -94,10 +82,11 @@ export async function POST(req: NextRequest) {
       const clienteNombre = match?.[1]?.trim();
       if (!clienteNombre) continue;
 
+      // Búsqueda exacta case-insensitive (sin %) para no fusionar clientes con nombres similares
       const { data: clienteRow } = await supabase
         .from("clientes")
         .select("id")
-        .ilike("nombre_completo", `%${clienteNombre}%`)
+        .ilike("nombre_completo", clienteNombre)
         .limit(1)
         .single();
 

@@ -81,16 +81,26 @@ export async function crearCita(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "La clienta es requerida." };
   }
 
-  // Crear clienta nueva si no existe aún
+  // Crear clienta nueva si no existe aún (buscar primero para evitar duplicados)
   let clienteId = clienteIdRaw;
   if (!clienteId && nuevaClientaNombre) {
-    const { data: nuevaClienta } = await supabase
+    const { data: existente } = await supabase
       .from("clientes")
-      .insert({ nombre_completo: nuevaClientaNombre, pendiente_datos: true })
       .select("id")
+      .ilike("nombre_completo", nuevaClientaNombre)
+      .limit(1)
       .single();
-    if (!nuevaClienta) return { ok: false, error: "No se pudo crear la clienta." };
-    clienteId = nuevaClienta.id;
+    if (existente) {
+      clienteId = existente.id;
+    } else {
+      const { data: nuevaClienta } = await supabase
+        .from("clientes")
+        .insert({ nombre_completo: nuevaClientaNombre, pendiente_datos: true })
+        .select("id")
+        .single();
+      if (!nuevaClienta) return { ok: false, error: "No se pudo crear la clienta." };
+      clienteId = nuevaClienta.id;
+    }
   }
 
   const fechaHora = `${fecha}T${hora}:00-05:00`;
@@ -294,23 +304,14 @@ export async function sincronizarDesdeGcal(
           if (citaExistente.fecha_hora !== nuevaFechaHora) updates.fecha_hora = nuevaFechaHora;
           if (citaExistente.notas !== nuevasNotas)          updates.notas      = nuevasNotas;
 
-          // Si el título cambió, intentar actualizar el cliente
+          // Si el título cambió, actualizar el nombre directamente en la clienta existente
           const match = (ev.summary ?? "").match(/D'look\s*[—-]\s*([^·\n]+)/);
           const nuevoNombre = match?.[1]?.trim();
-          if (nuevoNombre) {
-            const { data: clienteRow } = await supabase
-              .from("clientes").select("id")
-              .ilike("nombre_completo", `%${nuevoNombre}%`)
-              .limit(1).single();
-            if (clienteRow && clienteRow.id !== (citaExistente as any).cliente_id) {
-              updates.cliente_id = clienteRow.id;
-            } else if (!clienteRow) {
-              const { data: nueva } = await supabase
-                .from("clientes")
-                .insert({ nombre_completo: nuevoNombre, pendiente_datos: true })
-                .select("id").single();
-              if (nueva) updates.cliente_id = nueva.id;
-            }
+          if (nuevoNombre && (citaExistente as any).cliente_id) {
+            await supabase
+              .from("clientes")
+              .update({ nombre_completo: nuevoNombre })
+              .eq("id", (citaExistente as any).cliente_id);
           }
 
           if (Object.keys(updates).length > 0) {
@@ -330,10 +331,11 @@ export async function sincronizarDesdeGcal(
         const clienteNombre = match?.[1]?.trim();
         if (!clienteNombre) continue;
 
+        // Búsqueda exacta case-insensitive para evitar fusionar clientes con nombres similares
         const { data: clienteRow } = await supabase
           .from("clientes")
           .select("id")
-          .ilike("nombre_completo", `%${clienteNombre}%`)
+          .ilike("nombre_completo", clienteNombre)
           .limit(1)
           .single();
 
