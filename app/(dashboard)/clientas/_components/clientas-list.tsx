@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Search, AlertTriangle } from "lucide-react";
-import type { ClientaRow } from "../actions";
+import type { ClientaRow, ServicioBasico } from "../actions";
 import EditarClientaDrawer from "./editar-clienta-drawer";
 
 function getIniciales(nombre: string): string {
@@ -18,9 +18,11 @@ type Filter = "todas" | "pendientes";
 
 export default function ClientasList({
   clientas,
+  servicios,
   selectedId,
 }: {
   clientas: ClientaRow[];
+  servicios: ServicioBasico[];
   selectedId?: string;
 }) {
   const [search, setSearch] = useState("");
@@ -195,6 +197,7 @@ export default function ClientasList({
 
       <EditarClientaDrawer
         clienta={drawerClienta}
+        servicios={servicios}
         onClose={() => setDrawerClienta(null)}
       />
     </>

@@ -1,4 +1,4 @@
-import { listarClientas } from "./actions";
+import { listarClientas, listarServicios } from "./actions";
 import ClientasList from "./_components/clientas-list";
 
 export default async function ClientasPage({
@@ -7,7 +7,7 @@ export default async function ClientasPage({
   searchParams: Promise<{ id?: string }>;
 }) {
   const { id: selectedId } = await searchParams;
-  const clientas = await listarClientas();
+  const [clientas, servicios] = await Promise.all([listarClientas(), listarServicios()]);
 
-  return <ClientasList clientas={clientas} selectedId={selectedId} />;
+  return <ClientasList clientas={clientas} servicios={servicios} selectedId={selectedId} />;
 }
