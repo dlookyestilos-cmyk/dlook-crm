@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       await supabase.from("citas_agendadas").insert({
         cliente_id:               clienteFinalId,
         asignada_a:               canal.profile_id,
-        fecha_hora:               ev.start.dateTime,
+        fecha_hora:               ev.start!.dateTime!,
         duracion_minutos:         durMin,
         notas:                    ev.description ?? null,
         estado:                   "agendada",
