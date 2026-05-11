@@ -96,3 +96,14 @@ h1, h2, h3, h4 {
 }
 
 h1 { font-weight: 300; }
+
+/* ── Print / PDF ─────────────────────────────────────────── */
+@media print {
+  aside, header.sticky { display: none !important; }
+  /* Quitar el margen del sidebar */
+  .ml-\\[270px\\] { margin-left: 0 !important; }
+  /* Fondo blanco para que la impresora no gaste tinta */
+  body, .bg-crema { background: #fff !important; }
+  /* Asegurar colores de texto en print */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
