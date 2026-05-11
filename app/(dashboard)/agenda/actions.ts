@@ -277,7 +277,7 @@ export async function sincronizarDesdeGcal(
       // Buscar cita existente por google_event_id (maestro o personal)
       const { data: citaExistente } = await supabase
         .from("citas_agendadas")
-        .select("id, fecha_hora, notas")
+        .select("id, cliente_id, fecha_hora, notas")
         .or(`google_event_id.eq.${ev.id},google_event_id_personal.eq.${ev.id}`)
         .single();
 
@@ -289,11 +289,32 @@ export async function sincronizarDesdeGcal(
         } else {
           const nuevaFechaHora = ev.start!.dateTime!;
           const nuevasNotas    = ev.description ?? null;
-          if (citaExistente.fecha_hora !== nuevaFechaHora || citaExistente.notas !== nuevasNotas) {
-            await supabase.from("citas_agendadas").update({
-              fecha_hora: nuevaFechaHora,
-              notas:      nuevasNotas,
-            }).eq("id", citaExistente.id);
+          const updates: Record<string, unknown> = {};
+
+          if (citaExistente.fecha_hora !== nuevaFechaHora) updates.fecha_hora = nuevaFechaHora;
+          if (citaExistente.notas !== nuevasNotas)          updates.notas      = nuevasNotas;
+
+          // Si el título cambió, intentar actualizar el cliente
+          const match = (ev.summary ?? "").match(/D'look\s*[—-]\s*([^·\n]+)/);
+          const nuevoNombre = match?.[1]?.trim();
+          if (nuevoNombre) {
+            const { data: clienteRow } = await supabase
+              .from("clientes").select("id")
+              .ilike("nombre_completo", `%${nuevoNombre}%`)
+              .limit(1).single();
+            if (clienteRow && clienteRow.id !== (citaExistente as any).cliente_id) {
+              updates.cliente_id = clienteRow.id;
+            } else if (!clienteRow) {
+              const { data: nueva } = await supabase
+                .from("clientes")
+                .insert({ nombre_completo: nuevoNombre, pendiente_datos: true })
+                .select("id").single();
+              if (nueva) updates.cliente_id = nueva.id;
+            }
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await supabase.from("citas_agendadas").update(updates).eq("id", citaExistente.id);
             actualizadas++;
           }
         }

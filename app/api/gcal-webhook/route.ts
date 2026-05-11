@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     // Buscar cita existente por event_id
     const { data: citaExistente } = await supabase
       .from("citas_agendadas")
-      .select("id, fecha_hora, notas")
+      .select("id, cliente_id, fecha_hora, notas")
       .or(`google_event_id.eq.${ev.id},google_event_id_personal.eq.${ev.id}`)
       .single();
 
@@ -57,11 +57,36 @@ export async function POST(req: NextRequest) {
         // Evento eliminado en GCal → eliminar también del CRM
         await supabase.from("citas_agendadas").delete().eq("id", citaExistente.id);
       } else {
-        // Evento modificado → sincronizar cambios
-        await supabase.from("citas_agendadas").update({
+        // Evento modificado → sincronizar todos los cambios
+        const updates: Record<string, unknown> = {
           fecha_hora: ev.start!.dateTime!,
           notas:      ev.description ?? null,
-        }).eq("id", citaExistente.id);
+        };
+
+        // Si el título cambió, intentar actualizar el cliente
+        const match = (ev.summary ?? "").match(/D'look\s*[—-]\s*([^·\n]+)/);
+        const nuevoNombre = match?.[1]?.trim();
+        if (nuevoNombre) {
+          const { data: clienteRow } = await supabase
+            .from("clientes")
+            .select("id")
+            .ilike("nombre_completo", `%${nuevoNombre}%`)
+            .limit(1)
+            .single();
+          if (clienteRow && clienteRow.id !== (citaExistente as any).cliente_id) {
+            updates.cliente_id = clienteRow.id;
+          } else if (!clienteRow) {
+            // Cliente no existe → crear con datos pendientes y actualizar la cita
+            const { data: nueva } = await supabase
+              .from("clientes")
+              .insert({ nombre_completo: nuevoNombre, pendiente_datos: true })
+              .select("id")
+              .single();
+            if (nueva) updates.cliente_id = nueva.id;
+          }
+        }
+
+        await supabase.from("citas_agendadas").update(updates).eq("id", citaExistente.id);
       }
     } else if (!isCancelled) {
       // Evento nuevo creado directo en Google Calendar → intentar importar
