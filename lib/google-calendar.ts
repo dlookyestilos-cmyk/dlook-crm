@@ -109,6 +109,7 @@ export async function gcalListar(calendarId: string, desde: string, hasta: strin
       singleEvents: true,
       orderBy:      "startTime",
       maxResults:   250,
+      showDeleted:  true,
     });
     return res.data.items ?? [];
   } catch {

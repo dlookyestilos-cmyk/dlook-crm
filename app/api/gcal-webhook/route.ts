@@ -38,23 +38,31 @@ export async function POST(req: NextRequest) {
   const esPersonal = true; // Este canal es del calendario personal del perfil
 
   for (const ev of result.items) {
-    if (!ev.id || !ev.start?.dateTime) continue;
+    if (!ev.id) continue;
 
     const isCancelled = ev.status === "cancelled";
+
+    // Eventos cancelados sin fecha no tienen datos útiles más allá del id
+    if (!isCancelled && !ev.start?.dateTime) continue;
 
     // Buscar cita existente por event_id
     const { data: citaExistente } = await supabase
       .from("citas_agendadas")
-      .select("id, fecha_hora, notas, estado")
+      .select("id, fecha_hora, notas")
       .or(`google_event_id.eq.${ev.id},google_event_id_personal.eq.${ev.id}`)
       .single();
 
     if (citaExistente) {
-      await supabase.from("citas_agendadas").update({
-        fecha_hora: ev.start.dateTime,
-        notas:      ev.description ?? null,
-        estado:     isCancelled ? "cancelada" : citaExistente.estado,
-      }).eq("id", citaExistente.id);
+      if (isCancelled) {
+        // Evento eliminado en GCal → eliminar también del CRM
+        await supabase.from("citas_agendadas").delete().eq("id", citaExistente.id);
+      } else {
+        // Evento modificado → sincronizar cambios
+        await supabase.from("citas_agendadas").update({
+          fecha_hora: ev.start!.dateTime!,
+          notas:      ev.description ?? null,
+        }).eq("id", citaExistente.id);
+      }
     } else if (!isCancelled) {
       // Evento nuevo creado directo en Google Calendar → intentar importar
       const match = (ev.summary ?? "").match(/D'look\s*[—-]\s*([^·\n]+)/);

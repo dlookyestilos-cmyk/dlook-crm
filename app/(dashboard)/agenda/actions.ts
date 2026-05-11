@@ -205,11 +205,13 @@ export async function eliminarCita(citaId: string): Promise<ActionResult> {
   const adminCalId    = await getAdminCalendarId(supabase);
   const personalCalId = await getProfileCalendarId(supabase, cita?.asignada_a ?? null);
 
-  if (cita?.google_event_id && adminCalId) {
-    await gcalEliminar(adminCalId, cita.google_event_id);
-  }
-  if (cita?.google_event_id_personal && personalCalId && personalCalId !== adminCalId) {
-    await gcalEliminar(personalCalId, cita.google_event_id_personal);
+  // Intentar borrar todas las combinaciones conocidas de event_id × calendar_id
+  const eventIds = [...new Set([cita?.google_event_id, cita?.google_event_id_personal].filter(Boolean) as string[])];
+  const calIds   = [...new Set([adminCalId, personalCalId].filter(Boolean) as string[])];
+  for (const eventId of eventIds) {
+    for (const calId of calIds) {
+      await gcalEliminar(calId, eventId);
+    }
   }
 
   const { error } = await supabase.from("citas_agendadas").delete().eq("id", citaId);
@@ -267,30 +269,40 @@ export async function sincronizarDesdeGcal(
     if (!eventos) continue;
 
     for (const ev of eventos) {
-      if (!ev.id || !ev.start?.dateTime) continue;
+      if (!ev.id) continue;
+
+      const isCancelled = ev.status === "cancelled";
+      if (!isCancelled && !ev.start?.dateTime) continue;
 
       // Buscar cita existente por google_event_id (maestro o personal)
       const { data: citaExistente } = await supabase
         .from("citas_agendadas")
-        .select("id, fecha_hora, notas, estado")
+        .select("id, fecha_hora, notas")
         .or(`google_event_id.eq.${ev.id},google_event_id_personal.eq.${ev.id}`)
         .single();
 
-      const nuevaFechaHora = ev.start.dateTime;
-      const nuevasNotas    = ev.description ?? null;
-
       if (citaExistente) {
-        // Actualizar si cambió algo
-        if (citaExistente.fecha_hora !== nuevaFechaHora || citaExistente.notas !== nuevasNotas) {
-          const estadoNuevo = ev.status === "cancelled" ? "cancelada" : citaExistente.estado;
-          await supabase.from("citas_agendadas").update({
-            fecha_hora: nuevaFechaHora,
-            notas:      nuevasNotas,
-            estado:     estadoNuevo,
-          }).eq("id", citaExistente.id);
+        if (isCancelled) {
+          // Evento eliminado en GCal → eliminar del CRM
+          await supabase.from("citas_agendadas").delete().eq("id", citaExistente.id);
           actualizadas++;
+        } else {
+          const nuevaFechaHora = ev.start!.dateTime!;
+          const nuevasNotas    = ev.description ?? null;
+          if (citaExistente.fecha_hora !== nuevaFechaHora || citaExistente.notas !== nuevasNotas) {
+            await supabase.from("citas_agendadas").update({
+              fecha_hora: nuevaFechaHora,
+              notas:      nuevasNotas,
+            }).eq("id", citaExistente.id);
+            actualizadas++;
+          }
         }
-      } else {
+        continue;
+      }
+
+      if (isCancelled) continue; // No existe en CRM y fue borrado en GCal → ignorar
+
+      {
         // Evento nuevo en GCal → intentar importar
         // Parsear cliente del summary: "D'look — Nombre · Servicio"
         const match = (ev.summary ?? "").match(/D'look\s*[—-]\s*([^·\n]+)/);
@@ -317,16 +329,16 @@ export async function sincronizarDesdeGcal(
           clienteFinalId = nuevaClienta.id;
         }
 
-        const durMin = ev.end?.dateTime
+        const durMin = ev.end?.dateTime && ev.start?.dateTime
           ? Math.round((new Date(ev.end.dateTime).getTime() - new Date(ev.start.dateTime).getTime()) / 60_000)
           : 60;
 
         await supabase.from("citas_agendadas").insert({
           cliente_id:               clienteFinalId,
-          fecha_hora:               nuevaFechaHora,
+          fecha_hora:               ev.start!.dateTime!,
           duracion_minutos:         durMin,
-          notas:                    nuevasNotas,
-          estado:                   ev.status === "cancelled" ? "cancelada" : "agendada",
+          notas:                    ev.description ?? null,
+          estado:                   "agendada",
           creado_por:               user!.id,
           [esPersonal ? "google_event_id_personal" : "google_event_id"]: ev.id,
         });
